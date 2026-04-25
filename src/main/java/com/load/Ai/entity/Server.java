@@ -69,4 +69,6 @@ public class Server {
     protected void onUpdate() {
         updatedAt = LocalDateTime.now();
     }
+      @Column(name = "metrics_mode")
+    private String metricsMode;
 }

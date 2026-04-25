@@ -25,10 +25,12 @@ import com.load.Ai.dto.SignupRequest;
 import com.load.Ai.entity.LoginHistory;
 import com.load.Ai.entity.LoginStatus;
 import com.load.Ai.entity.Role;
+import com.load.Ai.entity.Server;
 import com.load.Ai.entity.User;
 import com.load.Ai.repository.LoginHistoryRepository;
 import com.load.Ai.security.JwtUtils;
 import com.load.Ai.security.UserDetailsImpl;
+import com.load.Ai.service.SessionService;
 import com.load.Ai.service.UserService;
 
 import jakarta.servlet.http.HttpServletRequest;
@@ -53,6 +55,10 @@ public class AuthController {
     
     @Autowired
     private JwtUtils jwtUtils;
+
+    @Autowired
+    private SessionService sessionService;
+
     
     @PostMapping("/signup")
     public ResponseEntity<?> registerUser(@Valid @RequestBody SignupRequest signupRequest) {
@@ -81,6 +87,8 @@ public ResponseEntity<?> authenticateUser(@Valid @RequestBody LoginRequest login
         String jwt = jwtUtils.generateJwtToken(authentication);
         
         UserDetailsImpl userDetails = (UserDetailsImpl) authentication.getPrincipal();
+        Server assignedServer = sessionService.assignServerToUser(userDetails.getId());
+
         List<String> roles = userDetails.getAuthorities().stream()
                 .map(GrantedAuthority::getAuthority)
                 .collect(Collectors.toList());
@@ -128,36 +136,96 @@ public ResponseEntity<?> authenticateUser(@Valid @RequestBody LoginRequest login
 }
 
     
-   @PostMapping("/admin/login")
+//    @PostMapping("/admin/login")
+// public ResponseEntity<?> authenticateAdmin(@Valid @RequestBody LoginRequest loginRequest,
+//                                           HttpServletRequest request) {
+//     try {
+//         // Find user by email or username
+//         User user = userService.findByEmailOrUsername(loginRequest.getEmailOrUsername())
+//                 .orElseThrow(() -> new RuntimeException("User not found"));
+        
+//         // Check if user has ADMIN role
+//         if (user.getRole() != Role.ADMIN) {
+//             return ResponseEntity.badRequest()
+//                     .body(new MessageResponse("Error: Access denied. Admin privileges required."));
+//         }
+        
+//         // Authenticate
+//         Authentication authentication = authenticationManager.authenticate(
+//                 new UsernamePasswordAuthenticationToken(user.getUsername(), loginRequest.getPassword())
+//         );
+        
+//         SecurityContextHolder.getContext().setAuthentication(authentication);
+//         String jwt = jwtUtils.generateJwtToken(authentication);
+        
+//         UserDetailsImpl userDetails = (UserDetailsImpl) authentication.getPrincipal();
+//         sessionService.assignServerToUser(userDetails.getId());
+//         List<String> roles = userDetails.getAuthorities().stream()
+//                 .map(GrantedAuthority::getAuthority)
+//                 .collect(Collectors.toList());
+        
+//         String role = roles.isEmpty() ? "" : roles.get(0).replace("ROLE_", "");
+        
+//         // Log login history
+//         LoginHistory loginHistory = new LoginHistory();
+//         loginHistory.setUser(user);
+//         loginHistory.setIpAddress(getClientIp(request));
+//         loginHistory.setUserAgent(request.getHeader("User-Agent"));
+//         loginHistory.setLoginTime(LocalDateTime.now());
+//         loginHistory.setStatus(LoginStatus.SUCCESS);
+//         loginHistoryRepository.save(loginHistory);
+        
+//         return ResponseEntity.ok(new AuthResponse(
+//                 jwt,
+//                 userDetails.getId(),
+//                 userDetails.getUsername(),
+//                 userDetails.getEmail(),
+//                 role
+//         ));
+//     } catch (Exception e) {
+//         e.printStackTrace();
+//         return ResponseEntity.badRequest().body(new MessageResponse("Error: Invalid credentials"));
+//     }
+// }
+@PostMapping("/admin/login")
 public ResponseEntity<?> authenticateAdmin(@Valid @RequestBody LoginRequest loginRequest,
-                                          HttpServletRequest request) {
+                                           HttpServletRequest request) {
     try {
         // Find user by email or username
         User user = userService.findByEmailOrUsername(loginRequest.getEmailOrUsername())
                 .orElseThrow(() -> new RuntimeException("User not found"));
-        
-        // Check if user has ADMIN role
+
+        // Check ADMIN role
         if (user.getRole() != Role.ADMIN) {
             return ResponseEntity.badRequest()
                     .body(new MessageResponse("Error: Access denied. Admin privileges required."));
         }
-        
+
         // Authenticate
         Authentication authentication = authenticationManager.authenticate(
-                new UsernamePasswordAuthenticationToken(user.getUsername(), loginRequest.getPassword())
+                new UsernamePasswordAuthenticationToken(
+                        user.getUsername(),
+                        loginRequest.getPassword()
+                )
         );
-        
+
         SecurityContextHolder.getContext().setAuthentication(authentication);
         String jwt = jwtUtils.generateJwtToken(authentication);
-        
-        UserDetailsImpl userDetails = (UserDetailsImpl) authentication.getPrincipal();
+
+        UserDetailsImpl userDetails =
+                (UserDetailsImpl) authentication.getPrincipal();
+
+        // ❌ REMOVE THIS (admin should NOT create session)
+        // sessionService.assignServerToUser(userDetails.getId());
+
         List<String> roles = userDetails.getAuthorities().stream()
                 .map(GrantedAuthority::getAuthority)
                 .collect(Collectors.toList());
-        
-        String role = roles.isEmpty() ? "" : roles.get(0).replace("ROLE_", "");
-        
-        // Log login history
+
+        String role = roles.isEmpty() ? "" :
+                roles.get(0).replace("ROLE_", "");
+
+        // Log login history (this is fine)
         LoginHistory loginHistory = new LoginHistory();
         loginHistory.setUser(user);
         loginHistory.setIpAddress(getClientIp(request));
@@ -165,7 +233,7 @@ public ResponseEntity<?> authenticateAdmin(@Valid @RequestBody LoginRequest logi
         loginHistory.setLoginTime(LocalDateTime.now());
         loginHistory.setStatus(LoginStatus.SUCCESS);
         loginHistoryRepository.save(loginHistory);
-        
+
         return ResponseEntity.ok(new AuthResponse(
                 jwt,
                 userDetails.getId(),
@@ -173,9 +241,11 @@ public ResponseEntity<?> authenticateAdmin(@Valid @RequestBody LoginRequest logi
                 userDetails.getEmail(),
                 role
         ));
+
     } catch (Exception e) {
         e.printStackTrace();
-        return ResponseEntity.badRequest().body(new MessageResponse("Error: Invalid credentials"));
+        return ResponseEntity.badRequest()
+                .body(new MessageResponse("Error: Invalid credentials"));
     }
 }
 
@@ -186,4 +256,17 @@ private String getClientIp(HttpServletRequest request) {
     }
     return xfHeader.split(",")[0];
 }
+
+@PostMapping("/logout")
+public ResponseEntity<?> logoutUser(Authentication authentication) {
+
+    UserDetailsImpl userDetails =
+            (UserDetailsImpl) authentication.getPrincipal();
+
+    sessionService.logoutUser(userDetails.getId());
+
+    return ResponseEntity.ok(new MessageResponse("Logged out successfully"));
+}
+
+
 }

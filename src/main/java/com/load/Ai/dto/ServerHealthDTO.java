@@ -10,13 +10,13 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 public class ServerHealthDTO {
+
     private Long serverId;
     private String serverName;
     private String serverIp;
     private String status;
     private Double cpuUsage;
     private Double memoryUsage;
-    private Integer currentLoad;
+    private Long currentLoad;              // 🔥 change to Long
     private Integer totalRequestsHandled;
 }
-

@@ -11,8 +11,11 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 
 import com.load.Ai.entity.Server;
+import com.load.Ai.entity.ServerStatus;
+import com.load.Ai.entity.SessionStatus;
 import com.load.Ai.repository.RequestLogRepository;
 import com.load.Ai.repository.ServerRepository;
+import com.load.Ai.repository.UserSessionRepository;
 
 @Service
 public class MLLoadBalancerService {
@@ -22,8 +25,10 @@ public class MLLoadBalancerService {
     
     @Autowired
     private RequestLogRepository requestLogRepository;
-
-
+//    @Autowired
+// private SessionService sessionService;
+@Autowired
+private UserSessionRepository userSessionRepository;
     
     @Value("${ml.service.url:http://localhost:5000}")
     private String mlServiceUrl;
@@ -40,7 +45,9 @@ public class MLLoadBalancerService {
     public Server selectBestServerUsingML(Long userId) {
         try {
             // Get all active servers
-            List<Server> servers = serverRepository.findAll();
+            // List<Server> servers = serverRepository.findAll();
+            List<Server> servers = serverRepository.findByStatus(ServerStatus.ACTIVE);
+
             
             if (servers.isEmpty()) {
                 throw new RuntimeException("No servers available");
@@ -75,9 +82,20 @@ public class MLLoadBalancerService {
             Long selectedServerId = ((Number) mlResponse.get("selected_server")).longValue();
             
             // Find and return the selected server
-            return serverRepository.findById(selectedServerId)
-                    .orElseThrow(() -> new RuntimeException("Selected server not found"));
+            // return serverRepository.findById(selectedServerId)
+            //         .orElseThrow(() -> new RuntimeException("Selected server not found"));
             
+
+             Server selected = serverRepository.findById(selectedServerId)
+                         .orElseThrow(() -> new RuntimeException("Selected server not found"));
+
+             if (selected.getStatus() != ServerStatus.ACTIVE) {
+                      throw new RuntimeException("ML selected inactive server");
+                      }
+
+                 return selected;
+
+
         } catch (Exception e) {
             System.err.println("ML service error: " + e.getMessage());
             // Fallback to simple load balancing if ML fails
@@ -110,9 +128,14 @@ public class MLLoadBalancerService {
         Map<String, Object> data = new HashMap<>();
         data.put("server_id", server.getId());
         data.put("server_name", server.getServerName());
+        data.put("status", server.getStatus().toString());
         data.put("cpu", server.getCpuUsage());
         data.put("memory", server.getMemoryUsage());
-        data.put("requests", server.getCurrentLoad());
+        // data.put("requests", sessionService.getServerLoad(server.getId()));
+        long activeLoad = userSessionRepository
+        .countByServerIdAndStatus(server.getId(), SessionStatus.ACTIVE);
+
+data.put("requests", activeLoad);
         data.put("response", 100.0); // You can calculate average response time per server
         return data;
     }
@@ -133,4 +156,34 @@ public class MLLoadBalancerService {
             return false;
         }
     }
+    public Map<String, Object> getMLDecision(Long userId) {
+
+    try {
+
+        
+        List<Server> servers = serverRepository.findAll(); 
+
+        Map<String, Object> userStats = getUserStats(userId);
+
+        List<Map<String, Object>> serverData = servers.stream()
+                .map(this::convertServerToMLFormat)
+                .collect(Collectors.toList());
+
+        Map<String, Object> requestPayload = new HashMap<>();
+        requestPayload.put("user", userStats);
+        requestPayload.put("servers", serverData);
+
+        return webClient.post()
+                .uri(mlServiceUrl + "/predict-server")
+                .bodyValue(requestPayload)
+                .retrieve()
+                .bodyToMono(Map.class)
+                .block();
+
+    } catch (Exception e) {
+
+        System.out.println("ML service error: " + e.getMessage());
+        return new HashMap<>();
+    }
+}
 }

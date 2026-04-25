@@ -46,12 +46,15 @@ public class AdminDashboardService {
         return dashboard;
     }
     
+    @Autowired
+private SessionService sessionService;
     public UserStatsDTO getUserStats() {
-        Long totalUsers = userRepository.count();
-        LocalDateTime today = LocalDateTime.now().withHour(0).withMinute(0).withSecond(0);
-        Long activeUsers = loginHistoryRepository.countActiveUsersSince(today);
-        Long inactiveUsers = totalUsers - activeUsers;
-        
+      Long totalUsers = userRepository.count();
+Long activeUsers = sessionService.getActiveUserCount();
+Long inactiveUsers = Math.max(0, totalUsers - activeUsers);
+
+        LocalDateTime today =
+        LocalDateTime.now().withHour(0).withMinute(0).withSecond(0);
         // Count users created today
         Long newUsersToday = userRepository.findAll().stream()
                 .filter(user -> user.getCreatedAt().isAfter(today))
@@ -69,13 +72,30 @@ public class AdminDashboardService {
                         server.getStatus().name(),
                         server.getCpuUsage(),
                         server.getMemoryUsage(),
-                        server.getCurrentLoad(),
+                        sessionService.getServerLoad(server.getId()),
                         server.getTotalRequestsHandled()
                 ))
                 .collect(Collectors.toList());
     }
     
-    public List<LoadDistributionDTO> getLoadDistribution() {
+    // public List<LoadDistributionDTO> getLoadDistribution() {
+    //     List<Object[]> distribution = requestLogRepository.getLoadDistribution();
+    //     Long totalRequests = distribution.stream()
+    //             .mapToLong(obj -> ((Number) obj[1]).longValue())
+    //             .sum();
+        
+    //     List<LoadDistributionDTO> result = new ArrayList<>();
+    //     for (Object[] obj : distribution) {
+    //         String serverName = (String) obj[0];
+    //         Integer requestsHandled = ((Number) obj[1]).intValue();
+    //         Double loadPercentage = totalRequests > 0 ? (requestsHandled * 100.0) / totalRequests : 0.0;
+            
+    //         result.add(new LoadDistributionDTO(serverName, requestsHandled, loadPercentage));
+    //     }
+        
+    //     return result;
+    // }
+     public List<LoadDistributionDTO> getLoadDistribution() {
         List<Object[]> distribution = requestLogRepository.getLoadDistribution();
         Long totalRequests = distribution.stream()
                 .mapToLong(obj -> ((Number) obj[1]).longValue())
@@ -92,6 +112,7 @@ public class AdminDashboardService {
         
         return result;
     }
+    
     
     public SystemOverviewDTO getSystemOverview() {
         Integer totalServers = (int) serverRepository.count();

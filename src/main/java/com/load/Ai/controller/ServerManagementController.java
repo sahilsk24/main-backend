@@ -20,6 +20,7 @@ import com.load.Ai.entity.Server;
 import com.load.Ai.entity.ServerStatus;
 import com.load.Ai.repository.ServerRepository;
 import com.load.Ai.service.ServerMetricsService;
+import com.load.Ai.service.SessionService;
 
 @RestController
 @RequestMapping("/api/admin/servers")
@@ -32,7 +33,8 @@ public class ServerManagementController {
 
     @Autowired
     private ServerMetricsService serverMetricsService;
-
+   @Autowired
+private SessionService sessionService;
     /**
      * Get all servers
      */
@@ -91,48 +93,60 @@ public class ServerManagementController {
             Server server = serverRepository.findById(id)
                     .orElseThrow(() -> new RuntimeException("Server not found"));
 
-            // ===== Fetch REAL metrics =====
-            // double cpu = serverMetricsService.getCpuUsage(
-            //         server.getServerIp(),
-            //         server.getServerPort()
-            // );
 
-            // double memory = serverMetricsService.getMemoryUsage(
-            //         server.getServerIp(),
-            //         server.getServerPort()
-            // );
+//              double cpu;
+// double memory;
 
+// // ===== SERVER-1 → REAL METRICS =====
+// if (server.getId() == 1) {
 
-             double cpu;
+//     cpu = serverMetricsService.getCpuUsage(
+//             server.getServerIp(),
+//             server.getServerPort()
+//     );
+
+//     memory = serverMetricsService.getMemoryUsage(
+//             server.getServerIp(),
+//             server.getServerPort()
+//     );
+// }
+// // ===== SERVER-2 → MANUAL VALUES =====
+// else if (server.getId() == 2) {
+//   cpu = serverMetricsService.getCpuUsage(
+//             server.getServerIp(),
+//             server.getServerPort()
+//     );
+
+//     memory = serverMetricsService.getMemoryUsage(
+//             server.getServerIp(),
+//             server.getServerPort()
+//     );
+// }
+// // ===== SERVER-3 → MANUAL VALUES =====
+// else {
+
+//     cpu = 88.0;      // 🟢 best server
+//     memory = 82.0;
+// }
+
+double cpu;
 double memory;
 
-// ===== SERVER-1 → REAL METRICS =====
-if (server.getId() == 1) {
+if ("REAL".equalsIgnoreCase(server.getMetricsMode())) {
 
     cpu = serverMetricsService.getCpuUsage(
             server.getServerIp(),
-            server.getServerPort()
-    );
+            server.getServerPort());
 
     memory = serverMetricsService.getMemoryUsage(
             server.getServerIp(),
-            server.getServerPort()
-    );
+            server.getServerPort());
+
+} else {
+
+    cpu = 95.0;   // demo overload
+    memory = 90.0;
 }
-// ===== SERVER-2 → MANUAL VALUES =====
-else if (server.getId() == 2) {
-
-   cpu = 10.0;      // 🟢 best server
-    memory = 0.70; // 🔴 change this anytime
-}
-// ===== SERVER-3 → MANUAL VALUES =====
-else {
-
-    cpu = 88.0;      // 🟢 best server
-    memory = 82.0;
-}
-
-
 
 
 
@@ -140,7 +154,9 @@ else {
             server.setMemoryUsage(memory);
 
             // ===== Derive status =====
-            if (cpu > 80 || memory > 85 || server.getCurrentLoad() > 10) {
+           long dynamicLoad = sessionService.getServerLoad(server.getId());
+
+            if (cpu > 80 || memory > 85 || dynamicLoad > 10){
                 server.setStatus(ServerStatus.OVERLOADED);
             } else {
                 server.setStatus(ServerStatus.ACTIVE);
